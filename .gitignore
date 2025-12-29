@@ -1,0 +1,4 @@
+*.log
+room_log.json
+__pycache__/
+.DS_Store

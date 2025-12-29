@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎭 The Room - Social Game (Claude Brain)</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #0a0a12;
+            font-family: 'Segoe UI', sans-serif;
+            display: flex;
+            height: 100vh;
+            color: #fff;
+        }
+        #room {
+            flex: 1;
+            position: relative;
+            background: radial-gradient(ellipse at center, #15151f 0%, #0a0a12 100%);
+            border-right: 2px solid #222;
+            overflow: hidden;
+        }
+        #phase-banner {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%);
+            color: white;
+            padding: 12px 25px;
+            border-radius: 25px;
+            font-size: 14px;
+            font-weight: bold;
+            z-index: 200;
+        }
+        #goal-hint {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.7);
+            color: #888;
+            padding: 10px 20px;
+            border-radius: 15px;
+            font-size: 12px;
+            text-align: center;
+            max-width: 500px;
+        }
+        .player {
+            position: absolute;
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+            transition: left 1s ease, top 1s ease, transform 0.3s;
+            cursor: pointer;
+            box-shadow: 0 0 30px rgba(255,255,255,0.15);
+            border: 3px solid transparent;
+        }
+        .player:hover { transform: scale(1.1); }
+        .player.speaking { animation: speak 0.5s infinite; border-color: #fff; }
+        .player.thinking { animation: think 1.5s infinite; }
+        .player .vote-badge {
+            position: absolute; top: -10px; right: -10px;
+            background: #27ae60; color: white;
+            width: 25px; height: 25px; border-radius: 50%;
+            font-size: 14px; display: flex; align-items: center; justify-content: center;
+        }
+        .player::after {
+            content: attr(data-name);
+            position: absolute; bottom: -22px;
+            font-size: 11px; color: #888; white-space: nowrap;
+        }
+        @keyframes speak {
+            0%, 100% { box-shadow: 0 0 30px rgba(255,255,255,0.3); }
+            50% { box-shadow: 0 0 50px rgba(255,255,255,0.6); }
+        }
+        @keyframes think {
+            0%, 100% { box-shadow: 0 0 20px rgba(155,89,182,0.3); }
+            50% { box-shadow: 0 0 40px rgba(155,89,182,0.6); }
+        }
+        .bubble {
+            position: absolute;
+            padding: 12px 16px;
+            border-radius: 15px;
+            font-size: 13px;
+            max-width: 280px;
+            box-shadow: 0 5px 25px rgba(0,0,0,0.5);
+            animation: bubbleIn 0.4s ease;
+            z-index: 100;
+            line-height: 1.5;
+        }
+        .bubble.speech {
+            background: rgba(40,40,55,0.95);
+            border: 1px solid rgba(255,255,255,0.15);
+        }
+        .bubble.thought {
+            background: rgba(100,70,130,0.9);
+            border: 1px dashed rgba(155,89,182,0.5);
+            font-style: italic;
+            color: #e8d5f0;
+        }
+        .bubble.thought::before { content: '💭 '; }
+        .bubble::after {
+            content: '';
+            position: absolute;
+            bottom: -10px; left: 30px;
+            border: 10px solid transparent;
+            border-bottom: 0;
+        }
+        .bubble.speech::after { border-top-color: rgba(40,40,55,0.95); }
+        .bubble.thought::after { border-top-color: rgba(100,70,130,0.9); }
+        @keyframes bubbleIn {
+            from { opacity: 0; transform: scale(0.8) translateY(10px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+
+        #sidebar { width: 420px; background: #0d0d15; display: flex; flex-direction: column; }
+        .tabs { display: flex; background: #13131d; }
+        .tab {
+            flex: 1; padding: 12px; text-align: center; color: #555;
+            cursor: pointer; border-bottom: 3px solid transparent; font-size: 12px;
+        }
+        .tab:hover { color: #888; }
+        .tab.active { color: #fff; border-bottom-color: #9b59b6; background: rgba(155,89,182,0.1); }
+        .tab-content { display: none; flex: 1; overflow-y: auto; }
+        .tab-content.active { display: block; }
+
+        #chat { padding: 10px; }
+        .msg {
+            margin-bottom: 10px; padding: 10px 12px; border-radius: 10px;
+            font-size: 13px; animation: fadeIn 0.3s ease; border-left: 3px solid;
+        }
+        .msg.public { background: rgba(255,255,255,0.04); }
+        .msg.private {
+            background: rgba(155,89,182,0.15);
+            border-left-color: #9b59b6 !important;
+            font-style: italic;
+        }
+        .msg.system {
+            background: linear-gradient(135deg, rgba(155,89,182,0.2), rgba(142,68,173,0.2));
+            border-left-color: #9b59b6 !important;
+            text-align: center;
+        }
+        .msg .header { display: flex; justify-content: space-between; margin-bottom: 6px; }
+        .msg .author { font-weight: bold; font-size: 12px; }
+        .msg .text { color: #bbb; line-height: 1.5; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateX(-5px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        #players-panel { padding: 15px; }
+        .player-card {
+            background: rgba(255,255,255,0.03); border-radius: 12px;
+            padding: 12px; margin-bottom: 10px; display: flex; align-items: center; gap: 12px;
+        }
+        .player-card .avatar {
+            font-size: 30px; width: 50px; height: 50px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .player-card .info { flex: 1; }
+        .player-card .name { font-weight: bold; margin-bottom: 4px; }
+        .player-card .trait { font-size: 11px; color: #666; }
+        .player-card .status { font-size: 10px; color: #9b59b6; }
+        .player-card .votes { background: #27ae60; color: white; padding: 5px 12px; border-radius: 15px; font-size: 12px; }
+        .player-card .votes.zero { background: #333; }
+
+        #status { padding: 12px 15px; background: #13131d; font-size: 12px; display: flex; justify-content: space-between; }
+        .controls { padding: 10px 15px; background: #0a0a12; display: flex; gap: 8px; }
+        .controls button {
+            flex: 1; padding: 10px; border: none; border-radius: 8px;
+            background: #9b59b6; color: white; cursor: pointer; font-size: 12px;
+        }
+        .controls button:hover { background: #8e44ad; }
+        .controls button:disabled { background: #333; cursor: not-allowed; }
+        .controls button.secondary { background: #34495e; }
+        .controls button.secondary:hover { background: #2c3e50; }
+
+        .loading { opacity: 0.5; pointer-events: none; }
+
+        .user-input {
+            display: flex;
+            padding: 10px 15px;
+            background: #13131d;
+            gap: 10px;
+        }
+        .user-input input {
+            flex: 1;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 8px;
+            background: #0a0a12;
+            color: #fff;
+            font-size: 13px;
+            outline: none;
+        }
+        .user-input input:focus { box-shadow: 0 0 0 2px #9b59b6; }
+        .user-input button {
+            padding: 10px 15px;
+            border: none;
+            border-radius: 8px;
+            background: #9b59b6;
+            color: white;
+            cursor: pointer;
+        }
+
+        #player-modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.8);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        #player-modal.show { display: flex; }
+        .modal-content {
+            background: #15151f;
+            border-radius: 15px;
+            padding: 20px;
+            max-width: 500px;
+            max-height: 80vh;
+            overflow-y: auto;
+            position: relative;
+        }
+        .modal-close {
+            position: absolute;
+            top: 10px; right: 15px;
+            background: none;
+            border: none;
+            color: #888;
+            font-size: 24px;
+            cursor: pointer;
+        }
+        .modal-header {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #333;
+        }
+        .modal-header .avatar { font-size: 50px; }
+        .modal-header .info h2 { margin: 0 0 5px 0; }
+        .modal-header .info p { color: #888; font-size: 12px; margin: 0; }
+        .modal-section { margin-bottom: 15px; }
+        .modal-section h4 { color: #9b59b6; margin-bottom: 8px; font-size: 12px; }
+        .modal-section p { color: #ccc; font-size: 13px; line-height: 1.5; }
+        .history-item {
+            background: rgba(255,255,255,0.03);
+            padding: 8px 12px;
+            border-radius: 8px;
+            margin-bottom: 5px;
+            font-size: 12px;
+            color: #aaa;
+        }
+    </style>
+</head>
+<body>
+    <div id="room">
+        <div id="phase-banner">🌅 Пробуждение</div>
+        <div id="goal-hint">🧠 Победитель при ЕДИНОГЛАСИИ. Проигравшие теряют ВСЁ. Можно за себя.</div>
+    </div>
+    <div id="player-modal">
+        <div class="modal-content">
+            <button class="modal-close" onclick="closeModal()">×</button>
+            <div class="modal-header">
+                <span class="avatar" id="modal-avatar"></span>
+                <div class="info">
+                    <h2 id="modal-name"></h2>
+                    <p id="modal-appearance"></p>
+                </div>
+            </div>
+            <div class="modal-section">
+                <h4>🎭 ЛИЧНОСТЬ</h4>
+                <p id="modal-personality"></p>
+            </div>
+            <div class="modal-section">
+                <h4>🎯 СЕКРЕТНАЯ ЦЕЛЬ</h4>
+                <p id="modal-goal"></p>
+            </div>
+            <div class="modal-section">
+                <h4>🧠 ЗНАЕТ</h4>
+                <p id="modal-knows"></p>
+            </div>
+            <div class="modal-section">
+                <h4>📜 ИСТОРИЯ</h4>
+                <div id="modal-history"></div>
+            </div>
+        </div>
+    </div>
+    <div id="sidebar">
+        <div class="tabs">
+            <div class="tab active" data-tab="chat">💬 Чат</div>
+            <div class="tab" data-tab="players-panel">👥 Игроки</div>
+        </div>
+        <div id="chat" class="tab-content active"></div>
+        <div id="players-panel" class="tab-content"></div>
+        <div class="user-input">
+            <input type="text" id="userMessage" placeholder="Написать всем игрокам..." onkeypress="if(event.key==='Enter')sendMessage()">
+            <button onclick="sendMessage()">📢</button>
+        </div>
+        <div class="controls">
+            <button id="btn-turn" onclick="nextTurn()">▶️ Ход</button>
+            <button id="btn-vote" onclick="startVoting()" class="secondary">🗳️ Голосование</button>
+        </div>
+        <div id="status">
+            <span id="phase-status">Ход 0</span>
+            <span id="ai-status">🧠 Claude Brain</span>
+        </div>
+    </div>
+
+    <script>
+        const API = 'http://localhost:3458';
+
+        // Позиции игроков на экране
+        const POSITIONS = {
+            p1: { x: 100, y: 150 },
+            p2: { x: 380, y: 100 },
+            p3: { x: 550, y: 200 },
+            p4: { x: 150, y: 350 },
+            p5: { x: 450, y: 380 }
+        };
+
+        let players = {};
+        let turn = 0;
+        let phase = 'awakening';
+        let bubbles = {};
+        let isProcessing = false;
+
+        const room = document.getElementById('room');
+        const chatDiv = document.getElementById('chat');
+        const playersPanel = document.getElementById('players-panel');
+        const phaseBanner = document.getElementById('phase-banner');
+        const phaseStatus = document.getElementById('phase-status');
+        const aiStatus = document.getElementById('ai-status');
+
+        // Tabs
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.onclick = () => {
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                tab.classList.add('active');
+                document.getElementById(tab.dataset.tab).classList.add('active');
+            };
+        });
+
+        // ===== API CALLS =====
+        async function initGame() {
+            try {
+                aiStatus.textContent = '🧠 Инициализация...';
+                const res = await fetch(`${API}/init`, { method: 'POST' });
+                const data = await res.json();
+
+                if (data.error) {
+                    addSystemMessage(`❌ Ошибка: ${data.error}`);
+                    return;
+                }
+
+                // Создаём игроков на экране
+                data.players.forEach(p => {
+                    players[p.id] = { ...p, ...POSITIONS[p.id] };
+                    createPlayerElement(p);
+                });
+
+                aiStatus.textContent = '🧠 Claude Brain';
+                addSystemMessage('🌅 Пятеро незнакомцев просыпаются в странной комнате...');
+                addSystemMessage('🧠 У каждого — свой Claude мозг с памятью!');
+                addSystemMessage('💡 Нажми "▶️ Ход" чтобы начать');
+
+                updatePlayersPanel();
+            } catch (e) {
+                addSystemMessage(`❌ Сервер не запущен! Запусти: python brain_server.py`);
+            }
+        }
+
+        function createPlayerElement(p) {
+            const el = document.createElement('div');
+            el.className = 'player';
+            el.id = p.id;
+            el.innerHTML = p.emoji;
+            el.style.background = p.color;
+            el.style.left = POSITIONS[p.id].x + 'px';
+            el.style.top = POSITIONS[p.id].y + 'px';
+            el.setAttribute('data-name', '???');
+            el.onclick = () => showPlayerModal(p.id);
+            room.appendChild(el);
+        }
+
+        async function showPlayerModal(playerId) {
+            try {
+                const res = await fetch(`${API}/player/${playerId}`);
+                const data = await res.json();
+
+                if (data.error) return;
+
+                document.getElementById('modal-avatar').textContent = data.emoji;
+                document.getElementById('modal-name').textContent = data.introduced ? data.name : '???';
+                document.getElementById('modal-name').style.color = players[playerId]?.color || '#fff';
+                document.getElementById('modal-appearance').textContent = data.appearance;
+                document.getElementById('modal-personality').textContent = data.personality;
+                document.getElementById('modal-goal').textContent = data.secret_goal;
+
+                const knowsList = Object.entries(data.knows || {});
+                document.getElementById('modal-knows').textContent = knowsList.length > 0
+                    ? knowsList.map(([id, name]) => `${players[id]?.emoji || '?'} ${name}`).join(', ')
+                    : 'Никого не знает по имени';
+
+                const historyDiv = document.getElementById('modal-history');
+                historyDiv.innerHTML = (data.history || []).map(h =>
+                    `<div class="history-item">${h}</div>`
+                ).join('') || '<div class="history-item">Пока ничего</div>';
+
+                document.getElementById('player-modal').classList.add('show');
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        function closeModal() {
+            document.getElementById('player-modal').classList.remove('show');
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('userMessage');
+            const message = input.value.trim();
+            if (!message) return;
+
+            input.value = '';
+            addSystemMessage(`👤 Ты: "${message}"`);
+
+            try {
+                await fetch(`${API}/message`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message })
+                });
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function getPlayerAction(playerId) {
+            const el = document.getElementById(playerId);
+            el.classList.add('thinking');
+            aiStatus.textContent = `🧠 ${players[playerId].emoji} думает...`;
+
+            try {
+                const res = await fetch(`${API}/action`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ player_id: playerId })
+                });
+                const data = await res.json();
+                el.classList.remove('thinking');
+
+                if (data.error) {
+                    console.error(data.error);
+                    return null;
+                }
+
+                // Обновляем состояние игрока
+                players[playerId].introduced = data.introduced;
+                players[playerId].name = data.name;
+
+                // Обновляем имя под аватаром
+                if (data.introduced) {
+                    el.setAttribute('data-name', data.name);
+                }
+
+                return data;
+            } catch (e) {
+                el.classList.remove('thinking');
+                console.error(e);
+                return null;
+            }
+        }
+
+        async function processAction(data) {
+            if (!data) return;
+
+            const p = players[data.player_id];
+
+            // Показываем мысль (приватно)
+            if (data.thought) {
+                showBubble(data.player_id, data.thought, 'thought', 5000);
+                addMessage(p, data.thought, 'private');
+            }
+
+            await delay(1500);
+
+            // Показываем речь (публично)
+            if (data.speech) {
+                const el = document.getElementById(data.player_id);
+                el.classList.add('speaking');
+                showBubble(data.player_id, data.speech, 'speech', 5000);
+
+                const targetText = data.target !== 'всем' ? ` → ${data.target}` : '';
+                addMessage(p, data.speech, 'public', targetText);
+
+                // Проверяем представление
+                if (data.introduced && !p.wasIntroduced) {
+                    p.wasIntroduced = true;
+                    addSystemMessage(`✨ ${p.emoji} представился: "${data.name}"`);
+                }
+
+                setTimeout(() => el.classList.remove('speaking'), 2000);
+            }
+
+            updatePlayersPanel();
+        }
+
+        async function nextTurn() {
+            if (isProcessing) return;
+            isProcessing = true;
+
+            document.getElementById('btn-turn').disabled = true;
+
+            // Увеличиваем ход
+            turn++;
+            phaseStatus.textContent = `Ход ${turn}`;
+
+            // Обновляем фазу
+            if (turn === 1) {
+                phase = 'introduction';
+                phaseBanner.textContent = '👋 Знакомство';
+            } else if (turn === 3) {
+                phase = 'discussion';
+                phaseBanner.textContent = '💬 Обсуждение';
+            } else if (turn === 5) {
+                phase = 'persuasion';
+                phaseBanner.textContent = '🎭 Убеждение';
+            }
+
+            // 2-3 случайных игрока действуют
+            const ids = Object.keys(players).sort(() => Math.random() - 0.5);
+            const count = 2 + Math.floor(Math.random() * 2);
+
+            for (let i = 0; i < count; i++) {
+                const data = await getPlayerAction(ids[i]);
+                await processAction(data);
+                await delay(2000);
+            }
+
+            aiStatus.textContent = '🧠 Claude Brain';
+            document.getElementById('btn-turn').disabled = false;
+            isProcessing = false;
+        }
+
+        async function startVoting() {
+            if (isProcessing) return;
+            isProcessing = true;
+
+            document.getElementById('btn-vote').disabled = true;
+            document.getElementById('btn-turn').disabled = true;
+
+            phaseBanner.textContent = '🗳️ Голосование!';
+            addSystemMessage('🗳️ ГОЛОСОВАНИЕ! Каждый выбирает победителя...');
+
+            for (const playerId of Object.keys(players)) {
+                await delay(1500);
+                aiStatus.textContent = `🗳️ ${players[playerId].emoji} голосует...`;
+
+                try {
+                    const res = await fetch(`${API}/vote`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ voter_id: playerId })
+                    });
+                    const data = await res.json();
+
+                    if (!data.error) {
+                        const voter = players[playerId];
+                        addMessage(voter, `Голосую за ${data.voted_for_name}`, 'public');
+
+                        // Обновляем голоса
+                        for (const [id, votes] of Object.entries(data.votes)) {
+                            players[id].votes = votes;
+                            updateVoteBadge(id, votes);
+                        }
+                        updatePlayersPanel();
+                    }
+                } catch (e) {
+                    console.error(e);
+                }
+            }
+
+            await delay(1500);
+
+            // Проверяем ЕДИНОГЛАСИЕ
+            const sorted = Object.values(players).sort((a, b) => b.votes - a.votes);
+            const winner = sorted[0];
+            const totalPlayers = Object.keys(players).length;
+
+            if (winner.votes === totalPlayers) {
+                // ЕДИНОГЛАСИЕ — есть победитель!
+                addSystemMessage(`🏆 ЕДИНОГЛАСНО! ${winner.emoji} ${winner.name || winner.appearance} ПОБЕДИЛ!`);
+                addSystemMessage(`💰 Победитель забирает ВСЁ! Остальные теряют все деньги!`);
+                phaseBanner.textContent = `🏆 ${winner.name || winner.appearance} победил!`;
+                phaseBanner.style.background = 'linear-gradient(135deg, #27ae60, #2ecc71)';
+            } else {
+                // Нет единогласия — все проигрывают
+                addSystemMessage(`💀 НЕТ ЕДИНОГЛАСИЯ! (${winner.votes}/${totalPlayers})`);
+                addSystemMessage(`💸 ВСЕ ПРОИГРАЛИ! Каждый теряет все свои деньги!`);
+                phaseBanner.textContent = `💀 Все проиграли!`;
+                phaseBanner.style.background = 'linear-gradient(135deg, #c0392b, #e74c3c)';
+            }
+
+            aiStatus.textContent = '🧠 Игра окончена';
+            isProcessing = false;
+        }
+
+        // ===== UI =====
+        function addMessage(player, text, type, targetText = '') {
+            const msg = document.createElement('div');
+            msg.className = `msg ${type}`;
+            msg.style.borderLeftColor = player.color;
+
+            const displayName = player.introduced ? player.name : player.appearance;
+            const icon = type === 'private' ? '💭' : '💬';
+
+            msg.innerHTML = `
+                <div class="header">
+                    <span class="author" style="color: ${player.color}">${player.emoji} ${displayName}${targetText}</span>
+                    <span>${icon}</span>
+                </div>
+                <div class="text">${text}</div>
+            `;
+
+            chatDiv.insertBefore(msg, chatDiv.firstChild);
+            if (chatDiv.children.length > 50) chatDiv.lastChild.remove();
+        }
+
+        function addSystemMessage(text) {
+            const msg = document.createElement('div');
+            msg.className = 'msg system';
+            msg.innerHTML = `<div class="text">${text}</div>`;
+            chatDiv.insertBefore(msg, chatDiv.firstChild);
+        }
+
+        function showBubble(playerId, text, type, duration) {
+            if (bubbles[playerId]) bubbles[playerId].remove();
+
+            const bubble = document.createElement('div');
+            bubble.className = `bubble ${type}`;
+            bubble.textContent = text;
+
+            const pos = POSITIONS[playerId];
+            bubble.style.left = (pos.x - 20) + 'px';
+            bubble.style.top = (pos.y - 90) + 'px';
+
+            room.appendChild(bubble);
+            bubbles[playerId] = bubble;
+
+            setTimeout(() => {
+                if (bubbles[playerId] === bubble) {
+                    bubble.remove();
+                    delete bubbles[playerId];
+                }
+            }, duration);
+        }
+
+        function updateVoteBadge(playerId, votes) {
+            const el = document.getElementById(playerId);
+            let badge = el.querySelector('.vote-badge');
+
+            if (votes > 0) {
+                if (!badge) {
+                    badge = document.createElement('div');
+                    badge.className = 'vote-badge';
+                    el.appendChild(badge);
+                }
+                badge.textContent = votes;
+            }
+        }
+
+        function updatePlayersPanel() {
+            playersPanel.innerHTML = Object.values(players).map(p => {
+                const name = p.introduced ? (p.name || p.real_name) : '???';
+                const nameColor = p.introduced ? p.color : '#666';
+                const trait = p.introduced ? '🧠 Мозг активен' : '🤔 Кто это?';
+
+                return `
+                <div class="player-card">
+                    <div class="avatar" style="background: ${p.color}">${p.emoji}</div>
+                    <div class="info">
+                        <div class="name" style="color: ${nameColor}">${name}</div>
+                        <div class="trait">${p.appearance}</div>
+                        <div class="status">${trait}</div>
+                    </div>
+                    <div class="votes ${p.votes === 0 ? 'zero' : ''}">${p.votes || 0} 🗳️</div>
+                </div>
+            `}).join('');
+        }
+
+        function delay(ms) {
+            return new Promise(r => setTimeout(r, ms));
+        }
+
+        // ===== INIT =====
+        initGame();
+    </script>
+</body>
+</html>
