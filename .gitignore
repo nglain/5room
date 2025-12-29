@@ -2,3 +2,8 @@
 room_log.json
 __pycache__/
 .DS_Store
+
+# Dark Room (локальная разработка, не в git)
+dark_room.py
+dark_room.html
+README.md
